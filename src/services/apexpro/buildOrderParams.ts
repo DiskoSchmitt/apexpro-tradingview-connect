@@ -39,7 +39,7 @@ export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
 
     const tradeMarginPercentage = new BigNumber(process.env.TRADE_MARGIN_PERCENTAGE || '100').div(100);
     const poolAvailableAmount = new BigNumber(100); // Assume an example available balance
-    let orderSize = availableBalance.multipliedBy(tradeMarginPercentage);
+    let orderSize = poolAvailableAmount.multipliedBy(tradeMarginPercentage);
 
     const stepSize = new BigNumber(marketsData.stepSize);
     const orderSizeStr = orderSize.div(stepSize).dp(0, BigNumber.ROUND_DOWN).multipliedBy(stepSize).toFixed();
