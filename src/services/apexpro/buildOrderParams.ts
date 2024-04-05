@@ -1,61 +1,67 @@
-// buildOrderParams.ts
 import ApexproConnector from './client';
 import config = require('config');
 import { AlertObject } from '../../types';
 import 'dotenv/config';
-import { getDecimalPointLength } from '../../helper';
+import { getDecimalPointLength, getStrategiesDB } from '../../helper';
 import { CreateOrderOptionsObject, generateRandomClientId, OrderType } from "apexpro-connector-node";
 import { Market } from "apexpro-connector-node/lib/apexpro/interface";
 import { BigNumber } from 'bignumber.js';
 
 export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
-    // Initialize the connector
+    const [db, rootData] = getStrategiesDB();
+
+    const date = new Date();
+    date.setMinutes(date.getMinutes() + 2);
+    const dateStr = date.toJSON();
+
     const connector = await ApexproConnector.build();
 
-    // Extract the market and dynamically set it for BTC-USDC trades
-    let market = alertMessage.market.endsWith("USD") ? alertMessage.market.replace("USD", "USDC") : alertMessage.market;
+    let market = alertMessage.market;
+    if (market.endsWith("USD")) {
+        market = market.replace("USD", "USDC");
+    }
 
-    // Fetch market data
     const marketsData = await connector.GetSymbolData(market);
     if (!marketsData) {
         console.log('Market data error, symbol=' + market);
         throw new Error('Market data error, symbol=' + market);
     }
+    console.log('Market Data', marketsData);
 
-    // Extract and log ticker data
     const tickerData = await connector.client.publicApi.tickers(marketsData.crossSymbolName);
+    console.log('Ticker Data', tickerData);
     if (tickerData.length == 0) {
-        console.error('Ticker data error, symbol=' + marketsData.crossSymbolName);
+        console.error('Ticker data is error, symbol=' + marketsData.crossSymbolName);
         throw new Error('Ticker data error, symbol=' + marketsData.crossSymbolName);
     }
 
-    // Determine the order side based on the alert message
     const orderSide = alertMessage.order === 'buy' ? "BUY" : "SELL";
 
-    // Fetch account details to get the available balance
-    const accountDetails = await connector.getAccountDetails(); // Placeholder; use actual implementation
-    const poolAvailableAmount = new BigNumber(accountDetails.poolAvailableAmount); // Assuming this is how you access the available balance
+    // Use TRADE_MARGIN_PERCENTAGE to determine order size based on available balance
+    const tradeMarginPercentage = new BigNumber(process.env.TRADE_MARGIN_PERCENTAGE || '100').div(100);
+    // Placeholder for fetching available balance; adjust according to actual implementation
+    const availableBalance = new BigNumber(100); // Assume an example available balance
+    let orderSize = availableBalance.multipliedBy(tradeMarginPercentage);
 
-    // Calculate order size based on marginPercentage from the alertMessage
-    const marginPercentage = alertMessage.marginPercentage ? new BigNumber(alertMessage.marginPercentage).div(100) : new BigNumber(1); // Default to 100% if not specified
-    let orderSize = poolAvailableAmount.multipliedBy(marginPercentage);
-
-    // Adjust orderSize based on market's stepSize
     const stepSize = new BigNumber(marketsData.stepSize);
-    let orderSizeStr = orderSize.toFixed(getDecimalPointLength(stepSize.toNumber()), BigNumber.ROUND_DOWN);
+    const orderSizeStr = orderSize.div(stepSize).dp(0, BigNumber.ROUND_DOWN).multipliedBy(stepSize).toFixed();
 
-    // Prepare other order parameters
     const latestPrice = new BigNumber(tickerData.at(0).oraclePrice);
     const tickSize = new BigNumber(marketsData.tickSize);
-    const minPrice = orderSide === "BUY" ? latestPrice.multipliedBy(new BigNumber(1).plus(0.05)) : latestPrice.multipliedBy(new BigNumber(1).minus(0.05));
+
+    const slippagePercentage = new BigNumber(0.05);
+    const minPrice = orderSide === "BUY"
+        ? latestPrice.multipliedBy(new BigNumber(1).plus(slippagePercentage))
+        : latestPrice.multipliedBy(new BigNumber(1).minus(slippagePercentage));
     const price = minPrice.minus(minPrice.mod(tickSize)).toFixed();
 
-    // Calculate fee if applicable
     const fee = new BigNumber(config.get('Apexpro.User.limitFee')).multipliedBy(price).multipliedBy(orderSizeStr);
+    console.log('Fee:', fee.toString());
+
     const currency_info = connector.symbols.currency.find(item => item.id === marketsData.settleCurrencyId);
     const limitFee = fee.toFixed(currency_info.starkExResolution.length - 1, BigNumber.ROUND_UP);
+    console.log('Limit Fee:', limitFee.toString());
 
-    // Construct the API order object
     const apiOrder: CreateOrderOptionsObject = {
         limitFee: limitFee.toString(),
         price: price,
