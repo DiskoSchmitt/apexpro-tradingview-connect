@@ -10,16 +10,9 @@ import { BigNumber } from 'bignumber.js';
 export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
     const [db, rootData] = getStrategiesDB();
 
-    const date = new Date();
-    date.setMinutes(date.getMinutes() + 2);
-    const dateStr = date.toJSON();
-
     const connector = await ApexproConnector.build();
 
-    let market = alertMessage.market;
-    if (market.endsWith("USD")) {
-        market = market.replace("USD", "USDC");
-    }
+    let market = alertMessage.market.endsWith("USD") ? alertMessage.market.replace("USD", "USDC") : alertMessage.market;
 
     const marketsData = await connector.GetSymbolData(market);
     if (!marketsData) {
@@ -29,18 +22,20 @@ export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
     console.log('Market Data', marketsData);
 
     const tickerData = await connector.client.publicApi.tickers(marketsData.crossSymbolName);
-    console.log('Ticker Data', tickerData);
     if (tickerData.length == 0) {
-        console.error('Ticker data is error, symbol=' + marketsData.crossSymbolName);
+        console.error('Ticker data error, symbol=' + marketsData.crossSymbolName);
         throw new Error('Ticker data error, symbol=' + marketsData.crossSymbolName);
     }
+    console.log('Ticker Data', tickerData);
 
     const orderSide = alertMessage.order === 'buy' ? "BUY" : "SELL";
 
-    // Use TRADE_MARGIN_PERCENTAGE to determine order size based on available balance
+    // Fetch actual available balance using "availableAmount"
+    const accountDetails = await connector.getAccountDetails(); // Ensure this method is correctly implemented
+    const availableBalance = new BigNumber(accountDetails.availableAmount); // Use the "availableAmount" as per documentation
+
+    // Calculate order size
     const tradeMarginPercentage = new BigNumber(process.env.TRADE_MARGIN_PERCENTAGE || '100').div(100);
-    // Placeholder for fetching available balance; adjust according to actual implementation
-    const availableBalance = new BigNumber(100); // Assume an example available balance
     let orderSize = availableBalance.multipliedBy(tradeMarginPercentage);
 
     const stepSize = new BigNumber(marketsData.stepSize);
@@ -50,17 +45,12 @@ export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
     const tickSize = new BigNumber(marketsData.tickSize);
 
     const slippagePercentage = new BigNumber(0.05);
-    const minPrice = orderSide === "BUY"
-        ? latestPrice.multipliedBy(new BigNumber(1).plus(slippagePercentage))
-        : latestPrice.multipliedBy(new BigNumber(1).minus(slippagePercentage));
+    const minPrice = orderSide === "BUY" ? latestPrice.multipliedBy(new BigNumber(1).plus(slippagePercentage)) : latestPrice.multipliedBy(new BigNumber(1).minus(slippagePercentage));
     const price = minPrice.minus(minPrice.mod(tickSize)).toFixed();
 
     const fee = new BigNumber(config.get('Apexpro.User.limitFee')).multipliedBy(price).multipliedBy(orderSizeStr);
-    console.log('Fee:', fee.toString());
-
     const currency_info = connector.symbols.currency.find(item => item.id === marketsData.settleCurrencyId);
     const limitFee = fee.toFixed(currency_info.starkExResolution.length - 1, BigNumber.ROUND_UP);
-    console.log('Limit Fee:', limitFee.toString());
 
     const apiOrder: CreateOrderOptionsObject = {
         limitFee: limitFee.toString(),
