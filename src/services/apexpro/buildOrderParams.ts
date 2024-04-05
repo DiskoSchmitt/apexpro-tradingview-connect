@@ -10,16 +10,9 @@ import { BigNumber } from 'bignumber.js';
 export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
     const [db, rootData] = getStrategiesDB();
 
-    const date = new Date();
-    date.setMinutes(date.getMinutes() + 2);
-    const dateStr = date.toJSON();
-
     const connector = await ApexproConnector.build();
 
-    let market = alertMessage.market;
-    if (market.endsWith("USD")) {
-        market = market.replace("USD", "USDC");
-    }
+    let market = alertMessage.market.endsWith("USD") ? alertMessage.market.replace("USD", "USDC") : alertMessage.market;
 
     const marketsData = await connector.GetSymbolData(market);
     if (!marketsData) {
@@ -29,18 +22,19 @@ export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
     console.log('Market Data', marketsData);
 
     const tickerData = await connector.client.publicApi.tickers(marketsData.crossSymbolName);
-    console.log('Ticker Data', tickerData);
     if (tickerData.length == 0) {
         console.error('Ticker data is error, symbol=' + marketsData.crossSymbolName);
         throw new Error('Ticker data error, symbol=' + marketsData.crossSymbolName);
     }
+    console.log('Ticker Data', tickerData);
 
     const orderSide = alertMessage.order === 'buy' ? "BUY" : "SELL";
 
-    // Use TRADE_MARGIN_PERCENTAGE to determine order size based on available balance
+    // Fetching the actual available balance from the account details
+    const accountBalance = await connector.getAccountBalance(); // Ensure this method exists and correctly fetches the balance
+    const availableBalance = new BigNumber(accountBalance.availableBalance); // Use the fetched available balance
+
     const tradeMarginPercentage = new BigNumber(process.env.TRADE_MARGIN_PERCENTAGE || '100').div(100);
-    // Placeholder for fetching available balance; adjust according to actual implementation
-    const availableBalance = new BigNumber(100); // Assume an example available balance
     let orderSize = availableBalance.multipliedBy(tradeMarginPercentage);
 
     const stepSize = new BigNumber(marketsData.stepSize);
