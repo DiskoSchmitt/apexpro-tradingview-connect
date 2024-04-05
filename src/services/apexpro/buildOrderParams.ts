@@ -31,7 +31,7 @@ export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
     const orderSide = alertMessage.order === 'buy' ? "BUY" : "SELL";
 
     // Fetching the actual available balance from the account details
-    const accountBalance = await connector.getAccountBalance(); // Ensure this method exists and correctly fetches the balance
+    const accountBalance = await connector.totalEquityValue(); // Ensure this method exists and correctly fetches the balance
     const availableBalance = new BigNumber(accountBalance.availableBalance); // Use the fetched available balance
 
     const tradeMarginPercentage = new BigNumber(process.env.TRADE_MARGIN_PERCENTAGE || '100').div(100);
