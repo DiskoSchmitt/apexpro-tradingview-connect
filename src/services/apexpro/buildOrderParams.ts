@@ -23,16 +23,16 @@ export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
 
     const tickerData = await connector.client.publicApi.tickers(marketsData.crossSymbolName);
     if (tickerData.length == 0) {
-        console.error('Ticker data error, symbol=' + marketsData.crossSymbolName);
+        console.error('Ticker data is error, symbol=' + marketsData.crossSymbolName);
         throw new Error('Ticker data error, symbol=' + marketsData.crossSymbolName);
     }
     console.log('Ticker Data', tickerData);
 
     const orderSide = alertMessage.order === 'buy' ? "BUY" : "SELL";
 
-    // Assume the connector has a method to fetch account details including the availableAmount
-    const accountDetails = await connector.getAccountDetails(); // Make sure this is correctly implemented in your connector
-    const availableBalance = new BigNumber(accountDetails.availableAmount); // Use the actual availableAmount field
+    // Fetching account details to get the availableAmount
+    const accountDetails = await connector.getAccountDetails(); // Implement this method to fetch the account details from the API
+    const availableBalance = new BigNumber(accountDetails.availableBalance); // Make sure to use the correct field for available balance
 
     const tradeMarginPercentage = new BigNumber(process.env.TRADE_MARGIN_PERCENTAGE || '100').div(100);
     let orderSize = availableBalance.multipliedBy(tradeMarginPercentage);
