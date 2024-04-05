@@ -30,11 +30,10 @@ export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
 
     const orderSide = alertMessage.order === 'buy' ? "BUY" : "SELL";
 
-    // Fetch actual available balance using "availableAmount"
-    const accountDetails = await connector.getAccountDetails(); // Ensure this method is correctly implemented
-    const availableBalance = new BigNumber(accountDetails.availableAmount); // Use the "availableAmount" as per documentation
+    // Assume the connector has a method to fetch account details including the availableAmount
+    const accountDetails = await connector.getAccountDetails(); // Make sure this is correctly implemented in your connector
+    const availableBalance = new BigNumber(accountDetails.availableAmount); // Use the actual availableAmount field
 
-    // Calculate order size
     const tradeMarginPercentage = new BigNumber(process.env.TRADE_MARGIN_PERCENTAGE || '100').div(100);
     let orderSize = availableBalance.multipliedBy(tradeMarginPercentage);
 
@@ -49,8 +48,11 @@ export const apexproBuildOrderParams = async (alertMessage: AlertObject) => {
     const price = minPrice.minus(minPrice.mod(tickSize)).toFixed();
 
     const fee = new BigNumber(config.get('Apexpro.User.limitFee')).multipliedBy(price).multipliedBy(orderSizeStr);
+    console.log('Fee:', fee.toString());
+
     const currency_info = connector.symbols.currency.find(item => item.id === marketsData.settleCurrencyId);
     const limitFee = fee.toFixed(currency_info.starkExResolution.length - 1, BigNumber.ROUND_UP);
+    console.log('Limit Fee:', limitFee.toString());
 
     const apiOrder: CreateOrderOptionsObject = {
         limitFee: limitFee.toString(),
